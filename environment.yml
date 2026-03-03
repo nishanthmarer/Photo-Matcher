@@ -1,0 +1,23 @@
+# Photo_Matcher — Conda Environment
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate photo_matcher_env
+#   python main.py
+
+name: photo_matcher_env
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.12
+  - numpy>=1.24.0
+  - opencv>=4.8.0
+  - faiss-gpu>=1.7.4
+  - pip
+  - pip:
+      - insightface>=0.7.3
+      - onnxruntime-gpu>=1.16.0
+      - PySide6>=6.5.0

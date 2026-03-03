@@ -1,0 +1,27 @@
+# Photo_Matcher — Python Dependencies
+# Python version required: 3.11+
+#
+# Installation:
+#   Option A (pip):
+#     python -m venv photo_matcher_env
+#     photo_matcher_env\Scripts\activate        (Windows)
+#     source photo_matcher_env/bin/activate      (Linux/Mac)
+#     pip install -r requirements.txt
+#
+#   Option B (conda):
+#     conda env create -f environment.yml
+#     conda activate photo_matcher_env
+
+# Core ML
+insightface>=0.7.3
+onnxruntime-gpu>=1.16.0
+numpy>=1.24.0
+
+# Fast similarity search
+faiss-cpu>=1.7.4
+
+# Image processing
+opencv-python>=4.8.0
+
+# UI
+PySide6>=6.5.0
