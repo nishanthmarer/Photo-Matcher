@@ -3,8 +3,9 @@
 # fileName: segregator.py
 # Description: Main orchestrator — coordinates all services and core modules. Single entry point for the UI layer.
 #              Provides two main operations:
-#              1. Build Cache: scan → cache check → ML inference on new/stale photos
+#              1. Build Cache: scan → fingerprint → ML inference on uncached photos
 #              2. Generate Folders: build FAISS index → match embeddings → copy matched photos
+#              Uses content-based fingerprinting so the cache is fully portable across drives and operating systems.
 #              Supports incremental output (skips already-copied files), graceful stopping via stop events,
 #              and post-run cleanup to free memory.
 # Year: 2026
@@ -36,8 +37,9 @@ class Segregator:
 
     Single entry point for the UI layer. Provides two independent operations:
 
-    1. Build Cache (process_photos): scan source folder → check cache → run ML inference on new/stale photos.
-       This is the expensive operation (~hours for large photo sets). Results are saved to disk.
+    1. Build Cache (process_photos): scan source folder → compute content fingerprints → run ML inference
+       on photos not already cached. Results are saved to disk, keyed by content fingerprint so the cache
+       is fully portable across drives, folders, and operating systems.
 
     2. Generate Folders (match_and_copy): match cached embeddings against references → copy to person folders.
        This is fast (~seconds). Can be re-run after adding new persons without rebuilding the cache.
@@ -145,8 +147,9 @@ class Segregator:
     ) -> dict:
         """Scan and process photos through the ML pipeline, saving results to cache.
 
-        This is the expensive operation. Each new/stale photo goes through detect → align → embed.
-        Cached photos are skipped. Progress and status callbacks keep the UI updated.
+        This is the expensive operation. Each uncached photo goes through detect → align → embed.
+        Photos whose content fingerprint is already cached are skipped. Progress and status callbacks
+        keep the UI updated.
 
         Args:
             source_dir: Path to the source photo directory.
@@ -175,37 +178,38 @@ class Segregator:
             return {
                 "total_scanned": 0,
                 "new_processed": 0,
-                "stale_reprocessed": 0,
                 "cached_skipped": 0,
             }
 
-        stale_paths, new_paths = self._cache.get_stale_and_new(all_paths)
-        to_process = stale_paths + new_paths
-        cached_count = len(all_paths) - len(to_process)
+        if status_callback:
+            status_callback(f"Computing fingerprints for {len(all_paths):,} photos...")
+
+        # Compute fingerprints and identify which photos need processing
+        uncached = self._cache.get_uncached_photos(all_paths)
+        cached_count = len(all_paths) - len(uncached)
 
         if status_callback:
             status_callback(
                 f"Found {len(all_paths):,} images — "
-                f"{len(new_paths):,} new, {len(stale_paths):,} stale, {cached_count:,} cached"
+                f"{len(uncached):,} new, {cached_count:,} cached"
             )
 
         logger.info(
-            f"Processing {len(to_process)} photos "
-            f"({len(new_paths)} new, {len(stale_paths)} stale, {cached_count} cached)"
+            f"Processing {len(uncached)} photos "
+            f"({len(uncached)} new, {cached_count} cached)"
         )
 
         actually_processed = 0
-        if to_process:
+        if uncached:
             if status_callback:
-                status_callback(f"Processing {len(to_process):,} photos...")
-            actually_processed = self._process_with_producer_consumer(to_process, progress_callback)
+                status_callback(f"Processing {len(uncached):,} photos...")
+            actually_processed = self._process_with_producer_consumer(uncached, progress_callback)
 
         self._cache.save()
 
         summary = {
             "total_scanned": len(all_paths),
-            "new_processed": len(new_paths),
-            "stale_reprocessed": len(stale_paths),
+            "new_processed": len(uncached),
             "cached_skipped": cached_count,
             "stopped_early": self._cache_stop.is_set(),
             "actually_processed": actually_processed,
@@ -246,14 +250,17 @@ class Segregator:
 
         Phases:
         1. Build FAISS index from reference embeddings.
-        2. Search every cached face against the index.
-        3. Copy matched photos to per-person output folders (incremental — skips existing).
-        4. Cleanup FAISS index.
+        2. Compute fingerprints for all scanned photos (uses cached mapping if available).
+        3. Search every cached face against the index.
+        4. Copy matched photos to per-person output folders (incremental — skips existing).
+        5. Cleanup FAISS index.
 
         Args:
             source_dir: Path to the source photo directory.
             output_dir: Path to the output directory.
             status_callback: Optional callback(message) for status bar updates.
+            match_progress_callback: Optional callback(current, total, filename) for match progress.
+            copy_progress_callback: Optional callback(current, total, filename) for copy progress.
 
         Returns:
             Summary dict with per-person copy counts.
@@ -290,7 +297,8 @@ class Segregator:
             if self._generate_stop.is_set():
                 break
 
-            cached = self._cache.get(photo_path)
+            # Look up cached data using path → fingerprint → cache
+            cached = self._cache.get_by_path(photo_path)
 
             if cached is None:
                 continue
@@ -378,7 +386,7 @@ class Segregator:
             source_dir: Path to the source directory.
 
         Returns:
-            True if cache was built for this source and has entries.
+            True if cache was loaded for this source and has entries.
         """
         self._cache.load_for_source(source_dir)
         return self._cache.is_valid_for_source(source_dir)
@@ -388,9 +396,14 @@ class Segregator:
         return self._cache.size
 
     def clear_cache(self) -> None:
-        """Clear the embedding cache from memory and disk."""
+        """Clear the embedding cache for the current source from memory and disk."""
         self._cache.clear()
         logger.info("Cache cleared by user")
+
+    def clear_all_caches(self) -> None:
+        """Clear all cache files from the cache directory."""
+        self._cache.clear_all()
+        logger.info("All caches cleared by user")
 
     # ------------------------------------------------------------------------------------------------------------------
     # Processing — producer-consumer pattern for parallel loading + GPU inference
@@ -398,7 +411,7 @@ class Segregator:
 
     def _process_with_producer_consumer(
         self,
-        photo_paths: list[str],
+        uncached_photos: list[tuple[str, str]],
         progress_callback: Optional[Callable[[int, int, str], None]] = None
     ) -> int:
         """Process photos using producer-consumer pattern with memory control.
@@ -408,13 +421,13 @@ class Segregator:
         Queue: bounded buffer caps RAM usage.
 
         Args:
-            photo_paths: List of photo paths to process.
+            uncached_photos: List of (photo_path, fingerprint) tuples to process.
             progress_callback: Optional progress callback.
 
         Returns:
             Number of photos actually processed.
         """
-        total = len(photo_paths)
+        total = len(uncached_photos)
         num_workers = self._config.processing.num_workers
         chunk_size = self._config.processing.producer_chunk_size
         image_queue = Queue(maxsize=self._config.processing.queue_max_size)
@@ -427,23 +440,23 @@ class Segregator:
                     if self._cache_stop.is_set():
                         break
 
-                    chunk = photo_paths[chunk_start:chunk_start + chunk_size]
+                    chunk = uncached_photos[chunk_start:chunk_start + chunk_size]
 
                     futures = [
-                        (executor.submit(self._load_image_with_stat, path), path)
-                        for path in chunk
+                        (executor.submit(self._load_image_for_processing, path), path, fingerprint)
+                        for path, fingerprint in chunk
                     ]
 
-                    for future, path in futures:
+                    for future, path, fingerprint in futures:
                         if self._cache_stop.is_set():
                             future.cancel()
                             break
 
                         result = future.result()
                         if result is not None:
-                            image_queue.put(result)
+                            image_queue.put((result, path, fingerprint))
                         else:
-                            image_queue.put((SKIP, path, 0, 0))
+                            image_queue.put((SKIP, path, fingerprint))
 
             image_queue.put(SENTINEL)
 
@@ -466,7 +479,7 @@ class Segregator:
                 self._drain_queue(image_queue, SENTINEL)
                 break
 
-            image, photo_path, mtime, fsize = item
+            image, photo_path, fingerprint = item
 
             if image is SKIP:
                 processed_count += 1
@@ -487,10 +500,10 @@ class Segregator:
                 for face in result.faces
             ]
 
+            # Store in cache keyed by content fingerprint with filename for traceability
             self._cache.put(
-                photo_path=photo_path,
-                modified_time=mtime,
-                file_size=fsize,
+                fingerprint=fingerprint,
+                filename=Path(photo_path).name,
                 faces=faces_data,
                 image_shape=(image_height, image_width),
             )
@@ -519,14 +532,6 @@ class Segregator:
                 self._pipeline.reload()
                 last_reload_count = processed_count
                 logger.info(f"GPU sessions reloaded at {processed_count}/{total}")
-
-            # Periodic GPU reload: destroy and recreate ONNX sessions to release GPU memory
-            if processed_count - last_reload_count >= reload_interval:
-                logger.info(f"Reloading GPU sessions to free memory ({processed_count}/{total})...")
-                self._pipeline.reload()
-                gc.collect()
-                last_reload_count = processed_count
-                logger.info("GPU sessions reloaded")
 
         producer_thread.join(timeout=5)
 
@@ -562,32 +567,22 @@ class Segregator:
             self._reference_manager.set_pipeline(self._pipeline)
             logger.info("ML models reloaded")
 
-    def _load_image_with_stat(self, photo_path: str) -> tuple | None:
-        """Load an image and get file stats in a worker thread.
+    def _load_image_for_processing(self, photo_path: str):
+        """Load an image in a worker thread.
 
-        Images are loaded at full resolution. RetinaFace handles its own internal resize via det_size, and
-        alignment crops from the full-resolution image for maximum embedding quality.
+        Images are loaded at full resolution. RetinaFace handles its own internal resize via det_size,
+        and alignment crops from the full-resolution image for maximum embedding quality.
 
         Args:
             photo_path: Path to the image file.
 
         Returns:
-            Tuple of (image, photo_path, modified_time, file_size), or None if loading fails.
+            BGR numpy array of the loaded image, or None if loading fails.
         """
         if self._cache_stop.is_set():
             return None
 
-        image = load_image(photo_path)
-
-        if image is None:
-            return None
-
-        try:
-            stat = os.stat(photo_path)
-            return (image, photo_path, stat.st_mtime, stat.st_size)
-        except OSError as e:
-            logger.error(f"Cannot stat file {photo_path}: {e}")
-            return None
+        return load_image(photo_path)
 
     def _build_reference_index(self, persons: list[str]) -> None:
         """Build FAISS index from all reference embeddings.
@@ -620,6 +615,7 @@ class Segregator:
             matches: Dict mapping person names to sets of matched photo paths.
             output_dir: Root output directory path.
             status_callback: Optional callback for copy progress updates.
+            copy_progress_callback: Optional callback(current, total, filename) for progress bar.
 
         Returns:
             Summary dict with new copy counts per person.

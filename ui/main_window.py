@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
     Layout:
         Left: ReferencePanel (persons + Generate Folders) / PhotoPoolPanel (folders + Build Cache)
         Right: ProgressPanel (progress bar + log) / ResultsPanel (per-person counts)
-        Bottom: StatusBar (pulsing dot + status message + phase)
+        Bottom: StatusBar (pulsing dot + status message + phase + device indicator)
     """
 
     def __init__(self) -> None:
@@ -136,8 +136,20 @@ class MainWindow(QMainWindow):
         self._enable_all_panels()
         self._startup_worker = None
 
+        # Detect and display GPU/CPU status in the status bar
+        try:
+            import onnxruntime as ort
+            available_providers = ort.get_available_providers()
+            if "CUDAExecutionProvider" in available_providers:
+                self._status_bar.set_device("GPU")
+            else:
+                self._status_bar.set_device("CPU")
+        except Exception:
+            self._status_bar.set_device("CPU")
+
     def _on_startup_failed(self, error_message: str) -> None:
         self._startup_worker = None
+        self._status_bar.set_device("CPU")
         QMessageBox.critical(self, "Startup Error", f"Failed to load ML models:\n\n{error_message}")
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -239,15 +251,14 @@ class MainWindow(QMainWindow):
         else:
             total = summary.get("total_scanned", 0)
             new = summary.get("new_processed", 0)
-            stale = summary.get("stale_reprocessed", 0)
             cached = summary.get("cached_skipped", 0)
             self._progress_panel.write_log("")
-            if new == 0 and stale == 0:
+            if new == 0:
                 self._progress_panel.write_log(
                     f"✅ All {total:,} photos already cached — nothing to process", Colors.GREEN)
             else:
                 self._progress_panel.write_log(
-                    f"✅ Cache complete — {new + stale:,} processed, {cached:,} already cached ({total:,} total)",
+                    f"✅ Cache complete — {new:,} processed, {cached:,} already cached ({total:,} total)",
                     Colors.GREEN)
             self._photo_pool_panel.set_cache_running(False)
             self._cache_is_built = True

@@ -3,7 +3,8 @@
 # fileName: theme.py
 # Description: Centralized theme and color definitions for the Photo Matcher UI. All colors, font sizes, and
 #              reusable stylesheet strings live here so the entire look can be changed from one place. Includes
-#              styles for the main application panels and the image review dialog.
+#              styles for the main application panels and the image review dialog. Font stacks are ordered for
+#              cross-platform compatibility (system-ui first, platform-specific fonts as fallbacks).
 # Year: 2026
 ###########################################################################################################################
 
@@ -58,6 +59,17 @@ class Fonts:
 
 
 # ---------------------------------------------------------------------------
+# Cross-platform font stacks
+# ---------------------------------------------------------------------------
+# system-ui resolves to the OS default on every platform:
+#   Windows → Segoe UI, macOS → San Francisco, Linux → system default (often DejaVu/Noto)
+# Platform-specific fonts are listed as fallbacks for environments where system-ui isn't supported.
+
+_FONT_UI = "system-ui, -apple-system, 'Segoe UI', 'Roboto', 'Noto Sans', sans-serif"
+_FONT_MONO = "'Fira Code', 'Cascadia Code', 'Consolas', 'DejaVu Sans Mono', 'Liberation Mono', monospace"
+
+
+# ---------------------------------------------------------------------------
 # Global application stylesheet
 # ---------------------------------------------------------------------------
 
@@ -71,7 +83,7 @@ def app_stylesheet() -> str:
         /* Default text color for everything */
         QWidget {{
             color: {Colors.TEXT_SECONDARY};
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: {_FONT_UI};
             font-size: {Fonts.BODY};
         }}
 
@@ -133,7 +145,7 @@ def app_stylesheet() -> str:
             border-radius: 6px;
             padding: 8px;
             color: {Colors.TEXT_DIM};
-            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            font-family: {_FONT_MONO};
             font-size: {Fonts.TINY};
         }}
 
@@ -334,7 +346,7 @@ def review_dialog_stylesheet() -> str:
     return f"""
         QWidget {{
             color: {Colors.TEXT_SECONDARY};
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: {_FONT_UI};
             font-size: {Fonts.BODY};
         }}
     """

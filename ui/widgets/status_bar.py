@@ -2,7 +2,8 @@
 # Author: Nishanth Marer Prabhu
 # fileName: status_bar.py
 # Description: Application status bar widget displayed at the bottom of the main window. Shows a color-coded pulsing
-#              indicator dot, current status message, and phase label. Receives updates from all workers via Qt slots.
+#              indicator dot, current status message, phase label, and GPU/CPU device indicator. Receives updates
+#              from all workers via Qt slots.
 # Year: 2026
 ###########################################################################################################################
 
@@ -124,6 +125,16 @@ class StatusBar(QWidget):
         self._phase_label.setStyleSheet(f"color: {Colors.TEXT_DIM}; font-size: 13px; font-weight: bold;")
         layout.addWidget(self._phase_label)
 
+        # Separator between phase and device indicator
+        separator = QLabel("│")
+        separator.setStyleSheet(f"color: {Colors.BORDER_ACCENT}; font-size: 13px;")
+        layout.addWidget(separator)
+
+        # GPU / CPU device indicator
+        self._device_label = QLabel("")
+        self._device_label.setStyleSheet(f"color: {Colors.TEXT_DIM}; font-size: 11px; font-weight: bold;")
+        layout.addWidget(self._device_label)
+
     @Slot(str, str)
     def on_status_updated(self, message: str, phase: str) -> None:
         self._message_label.setText(message)
@@ -147,3 +158,21 @@ class StatusBar(QWidget):
         else:
             self._message_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 12px;")
             self._phase_label.setStyleSheet(f"color: {Colors.TEXT_DIM}; font-size: 13px; font-weight: bold;")
+
+    def set_device(self, device: str) -> None:
+        """Show whether GPU or CPU is active in the status bar.
+
+        Args:
+            device: Device string — if it contains 'cuda' or 'gpu' (case-insensitive),
+                    shows a green GPU badge. Otherwise shows a yellow CPU badge.
+        """
+        if "cuda" in device.lower() or "gpu" in device.lower():
+            self._device_label.setText("🟢 GPU")
+            self._device_label.setStyleSheet(
+                f"color: {Colors.GREEN}; font-size: 11px; font-weight: bold;"
+            )
+        else:
+            self._device_label.setText("🟡 CPU")
+            self._device_label.setStyleSheet(
+                f"color: {Colors.YELLOW}; font-size: 11px; font-weight: bold;"
+            )

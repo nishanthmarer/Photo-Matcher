@@ -1,10 +1,26 @@
 @echo off
-REM Photo_Matcher — Windows Environment Setup
-REM Run this script from the project root: setup_env.bat
+REM ===========================================================================
+REM Photo Matcher — Windows Environment Setup
+REM Run from the project root: setup_env.bat
+REM ===========================================================================
 
 echo ============================================
-echo  Photo_Matcher — Environment Setup (Windows)
+echo  Photo Matcher — Environment Setup (Windows)
 echo ============================================
+echo.
+
+REM Check if Python is available
+where python >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Python not found. Please install Python 3.11 or higher.
+    echo Download from: https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
+
+REM Display Python version
+for /f "tokens=*" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
+echo [INFO] Found %PYTHON_VERSION%
 echo.
 
 REM Check if conda is available
@@ -32,11 +48,16 @@ if %ERRORLEVEL% EQU 0 (
     if %ERRORLEVEL% NEQ 0 (
         echo [ERROR] Failed to create virtual environment.
         echo Make sure Python 3.11+ is installed.
+        pause
         exit /b 1
     )
 
     call photo_matcher_env\Scripts\activate.bat
     echo [INFO] Virtual environment activated.
+
+    echo [INFO] Upgrading pip...
+    pip install --upgrade pip
+
     echo [INFO] Installing dependencies...
     echo.
 

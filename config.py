@@ -51,7 +51,6 @@ class ProcessingConfig:
     queue_max_size: int = 8
     producer_chunk_size: int = 32
     cache_save_interval: int = 100
-    gpu_reload_interval: int = 5000
     gpu_reload_interval: int = 500
 
 
@@ -74,8 +73,20 @@ class LoggingConfig:
 
 @dataclass
 class CacheConfig:
-    """Configuration for embedding cache."""
-    cache_file: str = ".face_cache.pkl"
+    """Configuration for embedding cache.
+
+    Cache files are stored in a dedicated directory. Each source folder gets its own cache file,
+    named after the source folder for human readability with a short hash of the folder name for
+    platform-independent consistency.
+
+    Example: photo_cache/Cam_1-20260218T100635Z-1-001_a3f2e1b0_cache.pkl
+
+    fingerprint_chunk_size controls how many bytes are read from the head and tail of each file
+    to compute the content fingerprint. 64KB is sufficient for DSLR photos since EXIF headers
+    alone provide unique identification.
+    """
+    cache_dir: str = "photo_cache"
+    fingerprint_chunk_size: int = 65536  # 64KB head + 64KB tail
 
 
 # ---------------------------------------------------------------------------

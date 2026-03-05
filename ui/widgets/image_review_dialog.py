@@ -213,6 +213,7 @@ class ImageReviewDialog(QWidget):
     """
 
     dialog_closed = Signal()
+    change_folder_requested = Signal()
 
     # Canvas fallback size when the widget hasn't been laid out yet
     _CANVAS_MIN_WIDTH = 600
@@ -221,12 +222,14 @@ class ImageReviewDialog(QWidget):
     # Maximum pixel dimension for loading images — prevents lag on large DSLR photos
     _MAX_LOAD_DIMENSION = 2400
 
-    def __init__(self, config: AppConfig, directory: str) -> None:
+    def __init__(self, config: AppConfig, directory: str, show_change_folder: bool = False) -> None:
         """Initialize the review dialog and load images from the given directory.
 
         Args:
             config: Application configuration (provides review window settings and image extensions).
             directory: Path to the folder to review.
+            show_change_folder: If True, shows a "Change Folder" button in the info bar.
+                                Used by the standalone tool. Hidden by default for MainWindow usage.
         """
         super().__init__(None)
 
@@ -236,6 +239,7 @@ class ImageReviewDialog(QWidget):
         self._index: int = 0
         self._current_pixmap: QPixmap | None = None
         self._close_confirmed: bool = False
+        self._show_change_folder = show_change_folder
 
         self._setup_window(config, directory)
         self._setup_ui()
@@ -268,9 +272,29 @@ class ImageReviewDialog(QWidget):
         layout.addLayout(self._build_button_bar())
 
     def _build_info_bar(self) -> QHBoxLayout:
-        """Top row — counter label (left) + status badge (right)."""
+        """Top row — change folder button (left, optional) + counter label + status badge (right)."""
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 4)
+
+        if self._show_change_folder:
+            self._change_folder_button = QPushButton("📂 Change Folder")
+            self._change_folder_button.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {Colors.BTN_SECONDARY};
+                    color: {Colors.TEXT_SECONDARY};
+                    border: 1px solid {Colors.BORDER_ACCENT};
+                    border-radius: 5px;
+                    padding: 4px 10px;
+                    font-size: {Fonts.SMALL};
+                }}
+                QPushButton:hover {{
+                    background-color: {Colors.BORDER_ACCENT};
+                }}
+            """)
+            self._change_folder_button.setCursor(Qt.PointingHandCursor)
+            self._change_folder_button.clicked.connect(self._on_change_folder)
+            row.addWidget(self._change_folder_button)
+            row.addSpacing(8)
 
         self._counter_label = QLabel("")
         self._counter_label.setStyleSheet(
@@ -537,9 +561,11 @@ class ImageReviewDialog(QWidget):
         # Semi-transparent red wash
         painter.fillRect(overlay.rect(), QColor(220, 38, 38, 80))
 
-        # DELETED text
+        # DELETED text — use system default font for cross-platform compatibility
         font_size = max(pixmap.width(), pixmap.height()) // 10
-        font = QFont("Segoe UI", max(font_size, 24), QFont.Bold)
+        font = QFont()
+        font.setPointSize(max(font_size, 24))
+        font.setWeight(QFont.Bold)
         painter.setFont(font)
 
         text = "DELETED"
@@ -625,6 +651,15 @@ class ImageReviewDialog(QWidget):
         if self._reviewer.is_marked(path):
             self._reviewer.restore(path)
             self._display_current()
+
+    def _on_change_folder(self) -> None:
+        """Handle change folder request — confirm unsaved marks, then signal the caller."""
+        if self._reviewer.marked_count > 0:
+            if not self._handle_unsaved_marks():
+                return
+
+        self._reviewer.reset()
+        self.change_folder_requested.emit()
 
     def _on_quit(self) -> None:
         """Handle quit — show confirmation if there are marks, then close."""

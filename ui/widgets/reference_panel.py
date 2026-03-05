@@ -6,7 +6,7 @@
 # Year: 2026
 ###########################################################################################################################
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QWidget,
@@ -41,12 +41,20 @@ class ReferencePanel(QFrame):
     IMAGE_FILTER = "Images (*.jpg *.jpeg *.png *.bmp *.tiff *.webp)"
     THUMBNAIL_SIZE = 34
 
+    # How long (ms) the "✅ Generated" label stays before reverting to "📂 Generate Folders"
+    _GENERATE_SUCCESS_DISPLAY_MS = 5000
+
     def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
 
         self._selected_paths: list[str] = []
         self._person_widgets: dict[str, QWidget] = {}
         self._cache_is_built = False
+
+        # Timer for reverting generate button text after success
+        self._generate_revert_timer = QTimer(self)
+        self._generate_revert_timer.setSingleShot(True)
+        self._generate_revert_timer.timeout.connect(self._revert_generate_button_text)
 
         self.setStyleSheet(f"ReferencePanel {{ {PANEL_CARD_STYLE} }}")
         self._setup_ui()
@@ -178,6 +186,8 @@ class ReferencePanel(QFrame):
             self._update_generate_button_state()
 
     def _on_generate_clicked(self) -> None:
+        # Stop any pending revert timer if the user re-clicks while "✅ Generated" is showing
+        self._generate_revert_timer.stop()
         self.generate_requested.emit()
 
     def _on_generate_stop_clicked(self) -> None:
@@ -201,9 +211,15 @@ class ReferencePanel(QFrame):
         info_layout = QVBoxLayout()
         info_layout.setSpacing(1)
         name_label = QLabel(name)
-        name_label.setStyleSheet(f"font-weight: bold; font-size: 12px; color: {Colors.TEXT_PRIMARY};")
+        name_label.setStyleSheet(
+            f"font-weight: bold; font-size: 12px; color: {Colors.TEXT_PRIMARY}; "
+            f"border: none; background: transparent;"
+        )
         count_label = QLabel(f"{len(photo_paths)} reference(s)")
-        count_label.setStyleSheet(f"font-size: 10px; color: {Colors.TEXT_DIM};")
+        count_label.setStyleSheet(
+            f"font-size: 10px; color: {Colors.TEXT_DIM}; "
+            f"border: none; background: transparent;"
+        )
         info_layout.addWidget(name_label)
         info_layout.addWidget(count_label)
         entry_layout.addLayout(info_layout)
@@ -248,6 +264,11 @@ class ReferencePanel(QFrame):
         else:
             self._generate_hint.setText("Status: Ready to generate")
 
+    def _revert_generate_button_text(self) -> None:
+        """Revert the generate button back to its default text after the success display period."""
+        self._generate_button.setText("📂 Generate Folders")
+        self._update_generate_button_state()
+
     # ------------------------------------------------------------------------------------------------------------------
     # Public methods — called by MainWindow
     # ------------------------------------------------------------------------------------------------------------------
@@ -258,6 +279,7 @@ class ReferencePanel(QFrame):
 
     def set_generate_running(self, running: bool) -> None:
         if running:
+            self._generate_revert_timer.stop()
             self._generate_button.setEnabled(False)
             self._generate_button.setText("📂 Generating...")
             self._generate_stop_button.setEnabled(True)
@@ -277,8 +299,10 @@ class ReferencePanel(QFrame):
             self._update_generate_button_state()
 
     def set_generate_complete(self) -> None:
-        self._generate_button.setText("✅ Generated — Re-run")
+        """Show a temporary success label on the generate button, then revert after 5 seconds."""
+        self._generate_button.setText("✅ Generated")
         self._update_generate_button_state()
+        self._generate_revert_timer.start(self._GENERATE_SUCCESS_DISPLAY_MS)
 
     def set_enabled(self, enabled: bool) -> None:
         self._name_input.setEnabled(enabled)
