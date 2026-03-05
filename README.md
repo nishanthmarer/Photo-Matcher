@@ -33,19 +33,14 @@ You have years of unsorted family photos across multiple folders, drives, or bac
 
 ---
 
-## Quick Start — End Users
+## Getting Started
 
-1. Download the latest release from [Releases](https://github.com/nishanthmarer/Photo_Matcher/releases)
-2. Extract the zip to any folder
-3. Run `PhotoMatcher.exe` (Windows) or `./PhotoMatcher` (Linux)
-4. First launch downloads ML models (~326MB, one-time)
-5. Follow the in-app workflow: Add people → Select folder → Build Cache → Generate Folders
+### Prerequisites
 
-The standalone **Image Review** tool (`ImageReview.exe`) can be run independently for cleaning up any photo folder — no ML models needed.
+- Python 3.11 or higher (3.12 recommended)
+- NVIDIA GPU with CUDA (optional but recommended — 5-10x faster)
 
----
-
-## Quick Start — Developers
+### Installation
 
 ```bash
 # Clone the repository
@@ -68,9 +63,24 @@ pip install -r requirements.txt
 python main.py
 ```
 
-On first run, InsightFace will download the `buffalo_l` model pack (~326MB) to `./models/buffalo_l/`. Subsequent launches load from disk in ~2 seconds.
+On first run, InsightFace will download the `buffalo_l` model pack (~326MB) to `./models/buffalo_l/`. Subsequent launches load from disk in ~2 seconds. The status bar shows 🟢 GPU or 🟡 CPU to confirm your device.
 
-For detailed setup instructions including GPU configuration, conda setup, and verifying your installation, see [docs/setup.md](docs/setup.md).
+For detailed setup instructions including GPU configuration, conda setup, and troubleshooting, see [docs/SETUP.md](docs/SETUP.md).
+
+### Automated Setup
+
+**Windows:**
+```bash
+setup_env.bat
+```
+
+**Linux / macOS:**
+```bash
+chmod +x setup_env.sh
+./setup_env.sh
+```
+
+These scripts detect whether Conda is available and use it if so, otherwise fall back to pip with a virtual environment.
 
 ---
 
@@ -130,32 +140,13 @@ Each person's result entry has a **Review** button that opens the built-in image
 
 Deletions are deferred — files are only removed from disk after you confirm on quit.
 
----
+### Standalone Image Review
 
-## Building from Source (Creating an EXE)
-
-### Prerequisites
+The review tool can also be run independently to clean up any photo folder:
 
 ```bash
-pip install pyinstaller
+python tools/review_photos.py
 ```
-
-### Build
-
-```bash
-# Main application
-pyinstaller --name PhotoMatcher --windowed main.py
-
-# Standalone review tool
-pyinstaller --name ImageReview --windowed tools/review_photos.py
-```
-
-### Notes
-
-- ML models are NOT bundled in the EXE — they download automatically on first launch (~326MB)
-- For GPU builds, ensure `onnxruntime-gpu` is installed before building
-- For CPU-only builds, use `onnxruntime` (no GPU) for a smaller package
-- The `photo_cache/` directory and `photo_matcher.log` are created at runtime next to the EXE
 
 ---
 
@@ -168,11 +159,10 @@ The status bar shows 🟡 CPU instead of 🟢 GPU.
 1. Check CUDA is installed: `nvidia-smi` should show your GPU
 2. Check ONNX Runtime providers:
    ```python
-   import onnxruntime
-   print(onnxruntime.get_available_providers())
+   python -c "import onnxruntime; print(onnxruntime.get_available_providers())"
    ```
 3. Ensure `onnxruntime-gpu` is installed, not just `onnxruntime`
-4. CUDA and cuDNN versions must match — check the [ONNX Runtime compatibility matrix](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
+4. CUDA and cuDNN versions must match — see [docs/SETUP.md](docs/SETUP.md) for details
 
 ### Application won't start
 
@@ -192,6 +182,10 @@ This project is licensed under the **GNU General Public License v3.0** — see t
 
 You are free to use, modify, and distribute this software, but any derivative work must also be released under GPL v3 with source code available.
 
+## Model License Notice
+
+Photo Matcher's source code is released under GPL v3. However, the pretrained ML models (`buffalo_l`) downloaded at runtime are provided by InsightFace and are licensed for **non-commercial research purposes only**. If you intend to use this application in a commercial setting, please contact InsightFace at recognition-oss-pack@insightface.ai for model licensing.
+
 ---
 
 ## Acknowledgments
@@ -200,3 +194,7 @@ You are free to use, modify, and distribute this software, but any derivative wo
 - [FAISS](https://github.com/facebookresearch/faiss) — fast similarity search by Meta AI
 - [ONNX Runtime](https://onnxruntime.ai/) — high-performance ML inference by Microsoft
 - [PySide6](https://doc.qt.io/qtforpython-6/) — Qt for Python UI framework
+
+---
+
+**Built by [Nishanth Marer Prabhu](https://github.com/nishanthmarer)**
