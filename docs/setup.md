@@ -74,9 +74,11 @@ These scripts detect whether Conda is available and use it if so, otherwise fall
 
 ---
 
-## GPU Setup (Optional)
+## GPU Setup (Recommended for Large Collections)
 
-GPU acceleration requires three components: the NVIDIA driver, CUDA Toolkit, and cuDNN. If any of these are missing or mismatched, Photo Matcher falls back to CPU automatically — it won't crash.
+GPU acceleration makes cache building 5-10x faster. The status bar in Photo Matcher shows 🟢 GPU or 🟡 CPU to confirm which device is active.
+
+GPU setup requires three components: the NVIDIA driver, CUDA Toolkit, and cuDNN. If any of these are missing or mismatched, Photo Matcher falls back to CPU automatically — it won't crash.
 
 ### Step 1 — Check your NVIDIA driver
 
@@ -104,15 +106,25 @@ Follow NVIDIA's installation guide for your platform — it typically involves c
 
 ### Step 4 — Install GPU-enabled ONNX Runtime
 
-If you used `requirements.txt`, `onnxruntime-gpu` is already installed. To verify or switch:
+The default `requirements.txt` includes `onnxruntime-gpu`. If you installed the CPU-only version or want to switch:
 
 ```bash
-# Check what's installed
+# Check what's currently installed
 pip show onnxruntime-gpu
+pip show onnxruntime
 
 # If only CPU version is installed, switch to GPU
 pip uninstall onnxruntime
 pip install onnxruntime-gpu>=1.16.0
+```
+
+**Important:** You cannot have both `onnxruntime` and `onnxruntime-gpu` installed at the same time. Uninstall one before installing the other.
+
+For users who do not have an NVIDIA GPU or prefer CPU-only:
+
+```bash
+pip uninstall onnxruntime-gpu
+pip install onnxruntime>=1.16.0
 ```
 
 ### Step 5 — Verify GPU detection
@@ -128,7 +140,13 @@ Expected output for a working GPU setup:
 
 If you only see `['CPUExecutionProvider']`, CUDA or cuDNN is not properly installed. See the troubleshooting section below.
 
-When you launch Photo Matcher, the status bar at the bottom right shows **🟢 GPU** or **🟡 CPU** to confirm which device is active.
+### Step 6 — Run and verify
+
+```bash
+python main.py
+```
+
+The status bar at the bottom right shows **🟢 GPU** or **🟡 CPU** to confirm which device is active. GPU acceleration applies to the cache building step — matching and copying are fast on both CPU and GPU.
 
 ---
 
@@ -264,6 +282,5 @@ Photo Matcher creates the following files and directories at runtime:
 | `photo_cache/` | Cached embeddings per source folder | Yes — will be rebuilt on next run |
 | `models/buffalo_l/` | Downloaded ML models (~326MB) | Yes — will re-download on next run |
 | `photo_matcher.log` | Application logs | Yes |
-| `.face_cache.pkl` | Legacy cache file (pre-v2) | Yes — no longer used |
 
 To fully uninstall, delete the project folder and the virtual environment.

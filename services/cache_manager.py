@@ -178,43 +178,60 @@ class CacheManager:
     # Fingerprint computation and lookup
     # ------------------------------------------------------------------------------------------------------------------
 
-    def get_uncached_photos(self, photo_paths: list[str]) -> list[tuple[str, str]]:
-        """Identify photos that need processing by computing content fingerprints.
+    def build_fingerprint_map(self, photo_paths: list[str]) -> None:
+        """Pre-compute content fingerprints for a list of photo paths.
 
-        For each photo, computes a content fingerprint and checks if it exists in the cache.
-        Photos whose fingerprint is already cached are skipped. Also builds an in-memory
-        path-to-fingerprint mapping for use during the matching phase (avoids recomputing).
+        Builds the in-memory path-to-fingerprint mapping used by get_by_path() for fast lookups.
+        Called once before any bulk operation (Build Cache or Generate Folders) so that individual
+        lookups during the operation are O(1) dict reads instead of per-file I/O.
 
         Args:
-            photo_paths: Full list of scanned photo paths.
-
-        Returns:
-            List of (photo_path, fingerprint) tuples for photos not in cache.
-            Photos that fail fingerprinting are included with a generated fallback fingerprint.
+            photo_paths: List of photo paths to fingerprint.
         """
         self._path_to_fingerprint = {}
-        uncached = []
-        cached_count = 0
         failed_count = 0
 
         for path in photo_paths:
             fingerprint = compute_fingerprint(path, self._chunk_size)
 
             if fingerprint is None:
-                # Fingerprinting failed (unreadable file) — skip this photo
                 failed_count += 1
                 continue
 
             self._path_to_fingerprint[path] = fingerprint
 
+        logger.info(
+            f"Fingerprinted {len(self._path_to_fingerprint)} photos"
+            f" ({failed_count} unreadable)" if failed_count else
+            f"Fingerprinted {len(self._path_to_fingerprint)} photos"
+        )
+
+    def get_uncached_photos(self, photo_paths: list[str]) -> list[tuple[str, str]]:
+        """Identify photos that need processing by computing content fingerprints.
+
+        Calls build_fingerprint_map() first, then checks each fingerprint against the cache.
+        Photos whose fingerprint is already cached are skipped.
+
+        Args:
+            photo_paths: Full list of scanned photo paths.
+
+        Returns:
+            List of (photo_path, fingerprint) tuples for photos not in cache.
+        """
+        self.build_fingerprint_map(photo_paths)
+
+        uncached = []
+        cached_count = 0
+
+        for path, fingerprint in self._path_to_fingerprint.items():
             if fingerprint in self._cache:
                 cached_count += 1
             else:
                 uncached.append((path, fingerprint))
 
         logger.info(
-            f"Fingerprint check: {len(photo_paths)} total, "
-            f"{len(uncached)} new, {cached_count} cached, {failed_count} unreadable"
+            f"Cache check: {len(photo_paths)} total, "
+            f"{len(uncached)} new, {cached_count} cached"
         )
 
         return uncached

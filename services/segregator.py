@@ -286,6 +286,13 @@ class Segregator:
 
         exclude = [output_dir]
         all_paths = self._scanner.scan(source_dir, exclude_dirs=exclude)
+
+        # Pre-compute fingerprints for all photos so cache lookups are O(1) during matching.
+        # Without this, each get_by_path() call would compute the fingerprint on the fly (~0.5ms each).
+        if status_callback:
+            status_callback("Computing fingerprints for matching...")
+        self._cache.build_fingerprint_map(all_paths)
+
         matches: dict[str, set] = {name: set() for name in persons}
         threshold = self._config.matching.distance_threshold
 

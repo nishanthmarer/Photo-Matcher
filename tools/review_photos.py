@@ -8,13 +8,32 @@
 # Year: 2026
 ###########################################################################################################################
 
+import os
 import sys
 import traceback
 from pathlib import Path
 
+
+def _setup_base_directory() -> None:
+    """Ensure the working directory is the application's root.
+
+    When running as a PyInstaller frozen EXE, the working directory may not be where the EXE lives.
+    This ensures relative paths (config, logs) resolve correctly.
+    """
+    if getattr(sys, 'frozen', False):
+        app_dir = os.path.dirname(sys.executable)
+    else:
+        app_dir = str(Path(__file__).resolve().parent.parent)
+
+    os.chdir(app_dir)
+
+
+# Set working directory BEFORE any project imports
+_setup_base_directory()
+
 # Ensure the project root is on sys.path so project-level imports (config, ui, services) resolve
 # regardless of how this script is launched — direct execution, module execution, or packaged EXE.
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent) if not getattr(sys, 'frozen', False) else os.path.dirname(sys.executable)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
