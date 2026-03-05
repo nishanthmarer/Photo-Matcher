@@ -70,7 +70,7 @@ python main.py
 
 On first run, InsightFace will download the `buffalo_l` model pack (~326MB) to `./models/buffalo_l/`. Subsequent launches load from disk in ~2 seconds.
 
-For detailed setup instructions including GPU configuration, conda setup, and verifying your installation, see [docs/SETUP.md](docs/SETUP.md).
+For detailed setup instructions including GPU configuration, conda setup, and verifying your installation, see [docs/setup.md](docs/setup.md).
 
 ---
 
